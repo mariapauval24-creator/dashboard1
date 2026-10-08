@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard DSS — Análisis de Ventas Walmart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#FFF7F1;--pink:#E88DA6;--pl:#F9CAD7;--deep:#B84D6E;--beige:#D8BF9A;--bl:#F3E7D6;--ink:#4B3A3F;--mute:#8C7A7E;--line:#F0E2D3}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+header{background:linear-gradient(120deg,var(--pl),var(--bl));padding:32px 20px;text-align:center}
+h1{margin:0 0 8px;font-size:clamp(22px,4.5vw,36px);font-weight:800}
+header p{margin:0;color:var(--mute);font-size:clamp(14px,2.5vw,17px)}
+main{max-width:1180px;margin:0 auto;padding:20px 16px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+label{font-size:13px;font-weight:500;color:var(--mute);display:flex;flex-direction:column;gap:6px}
+select{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(184,77,110,.06)}
+select:focus-visible{outline:2px solid var(--pink)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+.kpi,.card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 6px 20px rgba(184,77,110,.08);padding:18px}
+.kpi small{color:var(--mute);font-size:13px}
+.kpi b{display:block;font-size:24px;color:var(--deep);margin:6px 0 2px}
+.kpi span{font-size:12px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.wide{grid-column:1/-1}
+h2{font-size:17px;margin:0 0 4px}.sub{margin:0 0 12px;font-size:13px;color:var(--mute)}
+.box{position:relative;height:280px}.tall{height:340px}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}th{color:var(--mute);font-weight:500}
+.scroll{overflow-x:auto}
+ol{margin:0;padding-left:20px;line-height:1.6}li{margin-bottom:8px}
+footer{text-align:center;color:var(--mute);font-size:12px;padding:20px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.box{height:240px}.tall{height:300px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script></head>
+<body>
+<header><h1>Dashboard DSS — Análisis de Ventas Walmart</h1><p>Sistema de Soporte a Decisiones para el análisis del desempeño de 45 tiendas</p></header>
+<main>
+<section class="filters">
+<label>🏬 Tienda<select id="fStore"></select></label>
+<label>📅 Año<select id="fYear"><option value="0">Todos (2010–2012)</option><option>2010</option><option>2011</option><option>2012</option></select></label>
+<label>🎉 Tipo de semana<select id="fHol"><option value="all">Todas</option><option value="1">Festivas</option><option value="0">No festivas</option></select></label>
+<label>🌡️ Factor externo<select id="fVar"><option value="t">Temperatura</option><option value="f">Precio del combustible</option><option value="c">CPI</option><option value="u">Desempleo</option></select></label>
+</section>
+<section class="kpis" id="kpis"></section>
+<section class="grid">
+<article class="card wide"><h2>📈 Evolución semanal de ventas</h2><p class="sub">Ventas semanales sumadas de las tiendas seleccionadas.</p><div class="box"><canvas id="c1"></canvas></div></article>
+<article class="card wide"><h2>🏆 Ventas totales por tienda</h2><p class="sub">Las 45 tiendas ordenadas de mayor a menor; la tienda elegida se resalta.</p><div class="box tall"><canvas id="c2"></canvas></div></article>
+<article class="card"><h2>🎉 Festivas vs. no festivas</h2><p class="sub">Venta semanal promedio por registro.</p><div class="box"><canvas id="c3"></canvas></div></article>
+<article class="card"><h2>🔎 Ventas y factor externo</h2><p class="sub" id="rTxt"></p><div class="box"><canvas id="c4"></canvas></div></article>
+<article class="card"><h2>⬆️ Mejores 5 tiendas</h2><div class="scroll"><table id="tTop"></table></div></article>
+<article class="card"><h2>⬇️ Peores 5 tiendas</h2><div class="scroll"><table id="tLow"></table></div></article>
+<article class="card wide"><h2>💡 Hallazgos para la decisión</h2><p class="sub">Calculados automáticamente con los datos del año elegido (todas las tiendas).</p><ol id="ins"></ol></article>
+</section></main>
+<footer>Fuente: Walmart Sales Forecast (Kaggle) · 6,435 registros · 5 feb 2010 – 26 oct 2012</footer>
+<script>
+const $=id=>document.getElementById(id);
+const C={pink:'#E88DA6',pl:'#F9CAD7',beige:'#D8BF9A',deep:'#B84D6E'};
+const f=(n,d=0)=>n.toLocaleString('es-MX',{maximumFractionDigits:d});
+const M=n=>'$'+f(n/1e6,2)+' M', K=n=>'$'+f(n);
+const V={t:'Temperatura (°F)',f:'Precio del combustible (USD)',c:'CPI',u:'Desempleo (%)'};
+let data=[],ch={};
+const sum=a=>a.reduce((x,y)=>x+y,0), avg=a=>a.length?sum(a)/a.length:0;
+function corr(x,y){const mx=avg(x),my=avg(y);let n=0,a=0,b=0;x.forEach((v,i)=>{n+=(v-mx)*(y[i]-my);a+=(v-mx)**2;b+=(y[i]-my)**2});return n/Math.sqrt(a*b)}
+function mk(id,cfg){ch[id]&&ch[id].destroy();cfg.options={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},...cfg.options};ch[id]=new Chart($(id),cfg)}
+function groupStore(rows){const m={};rows.forEach(r=>{(m[r.s]??={s:r.s,sum:0,n:0});m[r.s].sum+=r.w;m[r.s].n++});return Object.values(m).sort((a,b)=>b.sum-a.sum)}
+function table(el,list,total){el.innerHTML='<tr><th>Tienda</th><th>Ventas</th><th>Prom. semanal</th><th>% total</th></tr>'+list.map(o=>`<tr><td>Tienda ${o.s}</td><td>${M(o.sum)}</td><td>${K(o.sum/o.n)}</td><td>${f(o.sum/total*100,1)}%</td></tr>`).join('')}
+function render(){
+ const st=+$('fStore').value,yr=+$('fYear').value,hol=$('fHol').value,v=$('fVar').value;
+ const byY=data.filter(r=>!yr||r.y===yr);
+ const rows=byY.filter(r=>(!st||r.s===st)&&(hol==='all'||r.h===+hol));
+ if(!rows.length){$('kpis').innerHTML='<div class="kpi">Sin datos para esta combinación de filtros.</div>';return}
+ const stores=groupStore(byY.filter(r=>hol==='all'||r.h===+hol)),total=sum(rows.map(r=>r.w));
+ const lead=stores[0],low=stores[stores.length-1];
+ const base=byY.filter(r=>!st||r.s===st),hA=avg(base.filter(r=>r.h).map(r=>r.w)),nA=avg(base.filter(r=>!r.h).map(r=>r.w));
+ const up=nA&&hA?(hA/nA-1)*100:null;
+ $('kpis').innerHTML=[['💰','Ventas totales',M(total),`${f(rows.length)} registros`],['📊','Venta semanal promedio',K(total/rows.length),'por tienda y semana'],['🥇','Tienda líder','Tienda '+lead.s,M(lead.sum)],['📉','Tienda con menores ventas','Tienda '+low.s,M(low.sum)],['🎉','Efecto semana festiva',up===null?'N/D':(up>=0?'+':'')+f(up,1)+'%','vs. semana no festiva']].map(k=>`<div class="kpi"><small>${k[0]} ${k[1]}</small><b>${k[2]}</b><span>${k[3]}</span></div>`).join('');
+ const wk={};rows.forEach(r=>wk[r.d]=(wk[r.d]||0)+r.w);const ds=Object.keys(wk).sort();
+ mk('c1',{type:'line',data:{labels:ds,datasets:[{data:ds.map(d=>wk[d]),borderColor:C.deep,backgroundColor:C.pl+'AA',fill:true,tension:.25,pointRadius:0,borderWidth:2}]},options:{scales:{x:{ticks:{maxTicksLimit:8}},y:{ticks:{callback:x=>'$'+f(x/1e6,1)+' M'}}}}});
+ mk('c2',{type:'bar',data:{labels:stores.map(o=>o.s),datasets:[{data:stores.map(o=>o.sum),backgroundColor:stores.map(o=>o.s===st?C.deep:C.pink)}]},options:{scales:{x:{title:{display:true,text:'Tienda'}},y:{ticks:{callback:x=>'$'+f(x/1e6)+' M'}}}}});
+ mk('c3',{type:'bar',data:{labels:['No festiva','Festiva'],datasets:[{data:[nA,hA],backgroundColor:[C.beige,C.pink],borderRadius:8}]},options:{scales:{y:{ticks:{callback:x=>'$'+f(x/1e3)+' mil'}}}}});
+ const r=corr(rows.map(o=>o[v]),rows.map(o=>o.w));
+ $('rTxt').textContent=`Correlación con ${V[v]}: r = ${f(r,3)} (${Math.abs(r)<.2?'muy débil':Math.abs(r)<.5?'débil a moderada':'fuerte'}). Correlación no implica causalidad.`;
+ mk('c4',{type:'scatter',data:{datasets:[{data:rows.map(o=>({x:o[v],y:o.w})),backgroundColor:C.pink+'99',pointRadius:2.5}]},options:{scales:{x:{title:{display:true,text:V[v]}},y:{title:{display:true,text:'Ventas semanales'},ticks:{callback:x=>'$'+f(x/1e3)+' mil'}}}}});
+ const all=sum(stores.map(o=>o.sum));
+ table($('tTop'),stores.slice(0,5),all);table($('tLow'),stores.slice(-5).reverse(),all);
+ const t5=sum(stores.slice(0,5).map(o=>o.sum))/all*100,ratio=lead.sum/low.sum;
+ const wa={};byY.forEach(o=>wa[o.d]=(wa[o.d]||0)+o.w);const pk=Object.entries(wa).sort((a,b)=>b[1]-a[1])[0];
+ const hy=avg(byY.filter(o=>o.h).map(o=>o.w)),ny=avg(byY.filter(o=>!o.h).map(o=>o.w));
+ const rs=Object.keys(V).map(k=>[k,corr(byY.map(o=>o[k]),byY.map(o=>o.w))]).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))[0];
+ $('ins').innerHTML=[
+ `Las 5 tiendas líderes concentran el ${f(t5,1)}% de las ventas; una afectación en ellas tendría un impacto desproporcionado en el ingreso.`,
+ `La Tienda ${lead.s} vende ${f(ratio,1)} veces más que la Tienda ${low.s}: conviene revisar las prácticas de las líderes y el potencial de las rezagadas.`,
+ `Las semanas festivas venden en promedio ${K(hy)} frente a ${K(ny)} de las no festivas (${f((hy/ny-1)*100,1)}%): ${hy>ny?'conviene reforzar inventario y personal en festivos':'el efecto festivo no es positivo en promedio'}.`,
+ `La semana con mayor venta total fue la del ${pk[0]}, con ${M(pk[1])}: sirve de referencia para planear la temporada alta.`,
+ `El factor externo más ligado a las ventas semanales es ${V[rs[0]]} (r = ${f(rs[1],3)}); ${Math.abs(rs[1])<.2?'la relación es débil, por lo que no debe usarse como único criterio de decisión':'vale la pena incorporarlo al pronóstico'}.`
+ ].map(t=>`<li>${t}</li>`).join('');
+}
+fetch('walmart_sales.csv').then(r=>r.text()).then(t=>{
+ data=t.trim().split('\n').slice(1).map(l=>{const c=l.split(',');return{s:+c[0],d:c[1],y:+c[1].slice(0,4),w:+c[2],h:+c[3],t:+c[4],f:+c[5],c:+c[6],u:+c[7]}});
+ const ids=[...new Set(data.map(r=>r.s))].sort((a,b)=>a-b);
+ $('fStore').innerHTML='<option value="0">Todas las tiendas</option>'+ids.map(i=>`<option value="${i}">Tienda ${i}</option>`).join('');
+ ['fStore','fYear','fHol','fVar'].forEach(i=>$(i).onchange=render);render();
+}).catch(()=>{document.getElementById('kpis').innerHTML='<div class="kpi">No se pudo cargar walmart_sales.csv. Verifica que esté en la misma carpeta que index.html y abre el sitio desde GitHub Pages.</div>'});
+</script></body></html>
